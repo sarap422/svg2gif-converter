@@ -1,0 +1,2 @@
+# svg2gif-converter
+SVGアニメーションをGIFアニメーションに変換するコンバーター
