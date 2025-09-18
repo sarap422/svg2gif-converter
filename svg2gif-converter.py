@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SVG to GIF Converter ver.0.1.0
+SVG to GIF Converter ver.1.0.0
 - fpsのみでフレーム品質を制御（フレーム数は自動計算）
 - 総再生時間と総フレーム数を自動表示
 - 順番アニメーションを維持
@@ -56,19 +56,26 @@ class ConversionModel:
     
     def detect_animation_info(self, svg_content: str) -> tuple:
         """SVGファイルからアニメーション情報を詳細に検出"""
-        base_duration = 1.0  # デフォルト値
+        base_duration = 0.0  # 初期値を0にして実際の検出値を使用
         max_delay = 0
         has_delays = False
         
-        # CSSアニメーションのdurationを検出
-        css_pattern = r'animation:[^;]*?(\d+(?:\.\d+)?)(s|ms)'
-        matches = re.findall(css_pattern, svg_content)
-        if matches:
-            for match in matches:
-                value = float(match[0])
-                if match[1] == 'ms':
-                    value = value / 1000
-                base_duration = max(base_duration, value)
+        # CSSアニメーションのdurationを検出（.75s, 0.75s, 750ms等の形式に対応）
+        css_patterns = [
+            r'animation:[^;]*?(\d*\.?\d+)(s|ms)',  # animation: name .75s infinite
+            r'animation-duration:\s*(\d*\.?\d+)(s|ms)',  # animation-duration: .75s
+        ]
+        
+        for pattern in css_patterns:
+            matches = re.findall(pattern, svg_content)
+            if matches:
+                for match in matches:
+                    value_str = match[0]
+                    if value_str:  # 空文字でない場合のみ処理
+                        value = float(value_str)
+                        if match[1] == 'ms':
+                            value = value / 1000
+                        base_duration = max(base_duration, value)
         
         # animation-delayの最大値を検出
         delay_patterns = [
@@ -103,25 +110,63 @@ class ConversionModel:
                     value = value / 1000
                 total_duration = max(total_duration, value)
         
+        # 何も検出されなかった場合のフォールバック
+        if total_duration == 0:
+            total_duration = 1.0  # デフォルト値として1秒を使用
+        
         return total_duration, has_delays
     
-    def calculate_optimal_settings(self, svg_file: str) -> tuple:
-        """SVGファイルから最適な設定を計算"""
+    def get_gif_info(self, filepath: str) -> tuple:
+        """GIFファイルの情報を取得（総再生時間、フレーム数、fps）"""
         try:
-            with open(svg_file, 'r', encoding='utf-8') as f:
-                svg_content = f.read()
+            with Image.open(filepath) as im:
+                total_duration = 0
+                frame_count = 0
+                try:
+                    while True:
+                        duration = im.info.get('duration', 0)
+                        total_duration += duration
+                        frame_count += 1
+                        im.seek(im.tell() + 1)
+                except EOFError:
+                    pass
+                
+                duration_seconds = total_duration / 1000  # ミリ秒を秒に変換
+                fps = frame_count / duration_seconds if duration_seconds > 0 else 0
+                return duration_seconds, frame_count, fps
+        except Exception as e:
+            print(f"GIF解析エラー: {e}")
+            return 0, 0, 0
+    
+    def calculate_optimal_settings(self, file_path: str) -> tuple:
+        """ファイルを解析して最適な設定を計算（SVGまたはGIF）"""
+        try:
+            file_extension = Path(file_path).suffix.lower()
             
-            # アニメーション時間とdelay情報を検出
-            animation_duration, has_delays = self.detect_animation_info(svg_content)
+            if file_extension == '.gif':
+                # GIFファイルの情報を取得
+                duration, frame_count, fps = self.get_gif_info(file_path)
+                return duration, int(fps) if fps > 0 else 20
             
-            # blocks-scaleの場合は固定値を使用
-            if 'spinner_' in svg_content and has_delays:
-                return 1.65, 20  # blocks-scale用の最適値（1.65秒、20fps）
+            elif file_extension == '.svg':
+                # SVGファイルの解析
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    svg_content = f.read()
+                
+                # アニメーション時間とdelay情報を検出
+                animation_duration, has_delays = self.detect_animation_info(svg_content)
+                
+                # blocks-scaleの場合は固定値を使用
+                if 'spinner_' in svg_content and has_delays:
+                    return 1.65, 20  # blocks-scale用の最適値（1.65秒、20fps）
+                
+                # その他のSVGの場合
+                optimal_fps = 20  # デフォルト20fps
+                return animation_duration, optimal_fps
             
-            # その他のSVGの場合
-            optimal_fps = 20  # デフォルト20fps
-            
-            return animation_duration, optimal_fps
+            else:
+                return 1.65, 20  # デフォルト値
+                
         except:
             return 1.65, 20  # デフォルト値
     
@@ -408,8 +453,8 @@ class ConversionView(tk.Tk, IConversionObserver):
     def __init__(self):
         super().__init__()
 
-        self.title("SVG to GIF Converter ver.0.1.0")
-        self.geometry("700x500")
+        self.title("SVG to GIF Converter ver.1.0.0")
+        self.geometry("700x540")
         self.model = ConversionModel()
         self.controller = ConversionController(self.model, self)
         self.model.add_observer(self)
@@ -430,7 +475,7 @@ class ConversionView(tk.Tk, IConversionObserver):
         self.output_path = tk.StringVar(value=self.default_output_path)
         self.gif_path = tk.StringVar(value="animation.gif")
         
-        # SVGファイル入力
+        # SVG/GIFファイル入力
         ttk.Label(self.file_frame, text="SVGファイル:").grid(row=0, column=0, sticky="w")
         self.svg_entry = ttk.Entry(self.file_frame, textvariable=self.svg_path, width=50)
         self.svg_entry.grid(row=0, column=1, padx=5)
@@ -448,18 +493,19 @@ class ConversionView(tk.Tk, IConversionObserver):
         self.gif_entry.grid(row=2, column=1, padx=5, pady=(10, 0))
         
         # アニメーション情報表示
-        self.info_frame = ttk.LabelFrame(self, text="アニメーション情報", padding=10)
+        self.info_frame = ttk.LabelFrame(self, text="ファイル情報", padding=10)
         self.animation_info = tk.StringVar(value="SVGファイルを選択してください")
         ttk.Label(self.info_frame, textvariable=self.animation_info, foreground="blue").pack()
         
         # パラメータ設定
         self.param_frame = ttk.LabelFrame(self, text="変換設定", padding=10)
-        self.fps = tk.IntVar(value=20)  # デフォルト20fps
+        self.fps = tk.IntVar(value=20)  # デフォルト20fps（整数）
         
         # fps設定の行
         ttk.Label(self.param_frame, text="フレームレート(fps):").grid(row=0, column=0, sticky="w")
-        self.fps_scale = ttk.Scale(self.param_frame, from_=5, to=30, variable=self.fps, 
-                                  orient="horizontal", command=lambda x: self._on_fps_changed())
+        self.fps_scale = tk.Scale(self.param_frame, from_=5, to=30, variable=self.fps, 
+                                 orient="horizontal", command=lambda x: self._on_fps_changed(),
+                                 resolution=1)  # 整数のみに制限
         self.fps_scale.grid(row=0, column=1, sticky="ew", padx=(0, 10))
         
         # fpsの数値入力フィールド
@@ -493,6 +539,9 @@ class ConversionView(tk.Tk, IConversionObserver):
         
         # グリッドの列幅を調整
         self.param_frame.columnconfigure(1, weight=1)
+        
+        # 初期化処理：小数点表示を有効化
+        self._on_fps_changed()  # 初期の計算結果を表示
     
     def _on_fps_changed(self):
         """fps変更時に計算結果を更新"""
@@ -519,11 +568,16 @@ class ConversionView(tk.Tk, IConversionObserver):
     def _browse_svg(self):
         filename = filedialog.askopenfilename(
             initialdir=self.default_output_path,
-            filetypes=[("SVG files", "*.svg"), ("All files", "*.*")]
+            title="SVG/GIFファイルを選択",
+            filetypes=[
+                ("SVG files", "*.svg"), 
+                ("GIF files", "*.gif"),
+                ("All files", "*.*")
+            ]
         )
         if filename:
             self.svg_path.set(filename)
-            self._on_svg_selected()
+            self._on_file_selected()
     
     def _browse_output_dir(self):
         """出力フォルダを選択"""
@@ -534,32 +588,52 @@ class ConversionView(tk.Tk, IConversionObserver):
         if dirname:
             self.output_path.set(dirname)
     
-    def _on_svg_selected(self):
-        """SVGファイルが選択されたときの処理"""
-        svg_path = self.svg_path.get()
-        if svg_path and os.path.exists(svg_path):
+    def _on_file_selected(self):
+        """SVG/GIFファイルが選択されたときの処理"""
+        file_path = self.svg_path.get()
+        if file_path and os.path.exists(file_path):
+            file_extension = Path(file_path).suffix.lower()
+            
             # ファイル名からGIFファイル名を生成
-            svg_filename = Path(svg_path).stem
-            gif_name = f"{svg_filename}.gif" if not svg_filename.endswith('.gif') else svg_filename
-            self.gif_path.set(gif_name)
+            filename_stem = Path(file_path).stem
+            
+            if file_extension == '.gif':
+                # GIFファイルの場合はそのまま使用
+                self.gif_path.set(f"{filename_stem}.gif")
+            else:
+                # SVGファイルの場合は新しいGIFファイル名を生成
+                gif_name = f"{filename_stem}.gif" if not filename_stem.endswith('.gif') else filename_stem
+                self.gif_path.set(gif_name)
             
             # 自動設定を実行
             self._auto_configure()
             
     def _auto_configure(self):
-        """SVGファイルを解析して最適な設定を自動適用"""
-        if not self.svg_path.get() or not os.path.exists(self.svg_path.get()):
+        """ファイルを解析して最適な設定を自動適用（SVG/GIF対応）"""
+        file_path = self.svg_path.get()
+        if not file_path or not os.path.exists(file_path):
             return
         
-        animation_duration, fps = self.controller.analyze_svg(self.svg_path.get())
+        file_extension = Path(file_path).suffix.lower()
+        animation_duration, fps = self.controller.analyze_svg(file_path)
         
         # 検出された値を保存
         self.animation_duration = animation_duration
         self.fps.set(int(fps))
         
-        # 表示を更新
-        info_text = f"検出されたアニメーション時間: {animation_duration:.2f}秒\n"
-        info_text += f"推奨設定: {fps}fps"
+        # ファイル種別に応じて表示を更新
+        if file_extension == '.gif':
+            # GIFファイルの情報を表示
+            duration, frame_count, actual_fps = self.model.get_gif_info(file_path)
+            info_text = f"GIF情報:\n"
+            info_text += f"総再生時間: {duration:.2f}秒\n"
+            info_text += f"総フレーム数: {frame_count}フレーム\n"
+            info_text += f"フレームレート: {actual_fps:.1f}fps"
+        else:
+            # SVGファイルの情報を表示
+            info_text = f"検出されたアニメーション時間: {animation_duration:.2f}秒\n"
+            info_text += f"推奨設定: {fps}fps"
+        
         self.animation_info.set(info_text)
         
         # 計算結果を更新

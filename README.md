@@ -8,7 +8,8 @@ SVGアニメーションをGIFアニメーションに変換するPythonツー�
 - **fps制御**: フレームレートのみで滑らかさを制御、フレーム数は自動計算
 - **自動設定**: SVGファイルを解析して最適なfpsを自動提案
 - **高品質出力**: 2倍解像度でキャプチャしてクリアなGIFを生成
-- **GUI操作**: tkinterベースの直感的なインターフェース
+- **直感的UI**: 整数fps制御と自動計算による使いやすいインターフェース
+- **安定動作**: Windows/macOS対応、エラーハンドリング強化
 
 ## 動作環境
 
@@ -95,28 +96,67 @@ python -c "import PIL, selenium, webdriver_manager; print('インストール成
 
 3. **設定確認**
    - 「最適値を自動設定」で推奨設定を適用
-   - フレームレート(fps)で滑らかさを調整
+   - フレームレート(fps)スライダーで滑らかさを調整（5-30fps、整数のみ）
 
 4. **変換実行**
    - 「変換開始」ボタンをクリック
    - 完成したGIFがダウンロードフォルダに保存されます
 
+![Main Window](docs/images/main-window.png)
+
+### サンプルファイルで試す
+
+`examples/` フォルダに動作確認用のSVGファイルが含まれています：
+
+```
+examples/
+├── 6-dots-rotate-black-36.svg     # 回転アニメーション (0.75秒)
+├── blocks-scale-black-36.svg      # 順番アニメーション (1.65秒)  
+├── blocks-scale-green-36.svg      # 色違いバリエーション (1.65秒)
+└── expected-outputs/              # 期待される出力結果
+    ├── 6-dots-rotate-black-36.gif
+    ├── blocks-scale-black.gif
+    └── blocks-scale-green-36.gif
+```
+
+**推奨テスト手順:**
+1. `examples/6-dots-rotate-black-36.svg` から開始（シンプルな回転）
+2. `examples/blocks-scale-black-36.svg` で順番アニメーションを確認
+3. 生成されたGIFを `expected-outputs/` と比較
+
+**各サンプルの特徴:**
+- **6-dots-rotate**: シンプルな回転アニメーション、0.75秒ループ
+- **blocks-scale**: 4つの要素が順番に拡縮する複雑なアニメーション、1.65秒ループ
+
+これらのファイルは [react-svg-spinners](https://github.com/ephraimduncan/react-svg-spinners) プロジェクトから提供されています（MIT License）。
+
 ### 設定パラメーター
 
-#### フレームレート(fps): 5-30fps
-- **5-10fps**: カクカクした動き（軽量）
+#### フレームレート(fps): 5-30fps（整数のみ）
+- **5-10fps**: カクカクした動き（軽量、小ファイル）
 - **15-20fps**: 標準的な滑らかさ（推奨）
-- **25-30fps**: 非常に滑らか（高品質）
+- **25-30fps**: 非常に滑らか（高品質、大ファイル）
+
+**注意**: 30fps近い高フレームレートでもブラウザによってはGIFの制限で実際の再生速度は約20-25fps程度になる場合があります。
 
 #### 自動計算される値
 - **総フレーム数**: アニメーション時間 × fps
 - **総再生時間**: フレーム数 ÷ fps
 
-#### 計算例（blocks-scale-black-36.svg）
+#### 計算例
+
+**blocks-scale-black-36.svg:**
 ```
 検出時間: 1.65秒
 20fps設定 → 33フレーム、1.65秒再生
 30fps設定 → 49フレーム、1.63秒再生（より滑らか）
+```
+
+**6-dots-rotate-black-36.svg:**
+```
+検出時間: 0.75秒
+20fps設定 → 15フレーム、0.75秒再生
+30fps設定 → 22フレーム、0.73秒再生（より滑らか）
 ```
 
 ## 対応するアニメーション形式
@@ -125,6 +165,7 @@ python -c "import PIL, selenium, webdriver_manager; print('インストール成
 - **CSSアニメーション**: `@keyframes` + `animation`
 - **順番アニメーション**: `animation-delay` による時間差
 - **SMIL**: `<animate>`, `<animateTransform>`
+- **blocks-scale系**: loaders.css のspinnerアニメーション
 
 ### ❌ 非対応
 - **JavaScript**: 動的制御アニメーション
@@ -142,14 +183,21 @@ python -c "import PIL, selenium, webdriver_manager; print('インストール成
 python -m pip install pillow selenium webdriver-manager
 ```
 
-#### 2. Chrome/ChromeDriverの問題
+#### 2. macOSでのファイル選択エラー
+```bash
+# エラー: NSInvalidArgumentException
+# 原因: macOSのファイルダイアログの制限
+# 解決済み: ver.1.0.0で修正完了
+```
+
+#### 3. Chrome/ChromeDriverの問題
 ```bash
 # ChromeDriverは自動ダウンロードされますが、エラーの場合：
 # Chromeブラウザがインストールされているか確認
 # 最新版に更新してください
 ```
 
-#### 3. 変換が途中で停止
+#### 4. 変換が途中で停止
 ```bash
 # ブラウザプロセスが残っている場合
 # Windows:
@@ -160,11 +208,11 @@ pkill -f chrome
 pkill -f chromedriver
 ```
 
-#### 4. メモリ不足エラー
+#### 5. メモリ不足エラー
 - フレームレートを下げる（30fps → 20fps）
 - 大きなSVGファイルの場合は分割処理を検討
 
-#### 5. アニメーションが正しく変換されない
+#### 6. アニメーションが正しく変換されない
 - SVGファイルをブラウザで開いて動作確認
 - CSS `animation-duration` と `animation-delay` が正しく設定されているか確認
 
@@ -173,8 +221,9 @@ pkill -f chromedriver
 #### 推奨設定
 ```
 一般的なアニメーション: 20fps
-高品質が必要な場合: 30fps
+高品質が必要な場合: 25-30fps
 ファイルサイズ重視: 15fps
+軽量化重視: 10fps
 ```
 
 #### システム要件
@@ -190,6 +239,15 @@ CPU: 変換時間に影響（高性能ほど高速）
 - **MVCパターン**: Model-View-Controller設計
 - **非同期処理**: UIをブロックしない変換処理
 - **自動リソース管理**: 一時ファイルの自動削除
+
+### フレームレート制限の技術的背景
+GIFフォーマットの仕様により：
+- フレーム間隔は1/100秒単位（10ms単位）でのみ設定可能
+- 60fps（16.67ms）→ 20msに丸められ、実質50fps
+- 30fps（33.33ms）→ 30msに丸められ、実質33fps
+- ブラウザによっては最小フレーム間隔の制限あり
+
+このため、30fps制限は技術的に適切な設計です。
 
 ### 主要技術
 1. **Selenium WebDriver**: SVGアニメーションキャプチャ
@@ -207,10 +265,16 @@ loop=0              # 無限ループ
 
 ## 更新履歴
 
-### ver.0.1.0 (最新)
-- fps制御に変更（フレーム数は自動計算）
-- 総再生時間と総フレーム数の自動表示
-- 時間ベースの進行計算で再生速度を修正
+### ver.1.0.0
+- `.75s`などの小数点アニメーション時間検出バグを修正
+- exampleファイルの追加（react-svg-spinners由来）
+- リリース版として安定化
+
+### ver.0.1.0
+- 整数fps制御に統一（5-30fps、小数点なし）
+- macOSでのファイルダイアログクラッシュを修正
+- UI高さ調整で文字の見切れを解消
+- 時間ベースの進行計算で再生速度を正確化
 - Windowsでのpip問題に対応したドキュメント
 
 ### ver.0.0.9
@@ -226,6 +290,3 @@ loop=0              # 無限ループ
 MIT License - 詳細は [LICENSE](LICENSE) を参照
 
 ---
-
-
-
