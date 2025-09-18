@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-SVG to GIF Converter v9 - 完全動作版
-- 1756.pyの順番アニメーションを維持
-- フレーム数の問題を修正（整数化とフレーム重複防止）
+SVG to GIF Converter ver.0.1.0
+- fpsのみでフレーム品質を制御（フレーム数は自動計算）
+- 総再生時間と総フレーム数を自動表示
+- 順番アニメーションを維持
 - 文字化けを除去
 """
 
@@ -27,8 +28,18 @@ class ConversionSettings:
     svg_file: str
     output_dir: str
     gif_output: str
-    frame_count: int
-    duration: int
+    fps: int
+    animation_duration: float  # 元アニメーションの総時間
+    
+    @property
+    def frame_count(self) -> int:
+        """fpsと総時間から自動計算されるフレーム数"""
+        return max(10, int(self.animation_duration * self.fps))
+    
+    @property 
+    def frame_duration_ms(self) -> int:
+        """フレーム間隔（ミリ秒）"""
+        return int(1000 / self.fps)
 
 class ConversionModel:
     def __init__(self):
@@ -105,23 +116,14 @@ class ConversionModel:
             
             # blocks-scaleの場合は固定値を使用
             if 'spinner_' in svg_content and has_delays:
-                return 33, 50, 1.65  # blocks-scale用の最適値
+                return 1.65, 20  # blocks-scale用の最適値（1.65秒、20fps）
             
             # その他のSVGの場合
-            if has_delays:
-                optimal_frame_count = int(animation_duration * 20)  # 20fps
-            else:
-                optimal_frame_count = int(animation_duration * 20)  # 20fps
+            optimal_fps = 20  # デフォルト20fps
             
-            optimal_frame_count = max(10, min(100, optimal_frame_count))  # 10-100の範囲に制限
-            
-            # フレーム間隔を計算（ミリ秒）
-            optimal_duration = int((animation_duration * 1000) / optimal_frame_count)
-            optimal_duration = max(30, min(200, optimal_duration))  # 30-200msの範囲に制限
-            
-            return optimal_frame_count, optimal_duration, animation_duration
+            return animation_duration, optimal_fps
         except:
-            return 33, 50, 1.65  # デフォルト値（1.2秒 + 0.45秒delay）
+            return 1.65, 20  # デフォルト値
     
     def convert_svg_to_gif(self, settings: ConversionSettings):
         self.settings = settings
@@ -134,7 +136,6 @@ class ConversionModel:
                 output_dir.mkdir(parents=True, exist_ok=True)
             
             # GIFファイルのフルパスを生成
-            # gif_outputがすでに.gifを含んでいる場合の処理
             gif_filename = settings.gif_output
             if not gif_filename.endswith('.gif'):
                 gif_filename = f"{gif_filename}.gif"
@@ -149,8 +150,8 @@ class ConversionModel:
             options = webdriver.ChromeOptions()
             options.add_argument("--headless")
             options.add_argument("--disable-gpu")
-            options.add_argument("--window-size=800x800")  # より大きなサイズで高品質
-            options.add_argument("--force-device-scale-factor=2")  # 高解像度化
+            options.add_argument("--window-size=800x800")
+            options.add_argument("--force-device-scale-factor=2")
             
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=options)
@@ -158,9 +159,6 @@ class ConversionModel:
             # SVGファイルの内容を読み込み
             with open(settings.svg_file, 'r', encoding='utf-8') as f:
                 svg_content = f.read()
-            
-            # アニメーション情報を検出
-            animation_duration, has_delays = self.detect_animation_info(svg_content)
             
             # HTMLページを作成（アニメーションを正確に制御）
             html_content = f"""
@@ -198,7 +196,7 @@ class ConversionModel:
                     
                     function setAnimationProgress(progress) {{
                         // progress: 0.0 から 1.0
-                        const totalDuration = {animation_duration};
+                        const totalDuration = {settings.animation_duration};
                         const currentTime = progress * totalDuration;
                         
                         // 各要素のアニメーションを個別に制御
@@ -250,15 +248,22 @@ class ConversionModel:
             
             # HTMLを表示
             driver.get(f"file://{temp_html.absolute()}")
-            time.sleep(1.5)  # 初期化待ち
+            time.sleep(1.5)
 
             frames = []
-            # フレームキャプチャ（整数のrange使用）
-            for i in range(int(settings.frame_count)):  # 明示的にint()を使用
+            frame_count = settings.frame_count
+            
+            # フレームキャプチャ
+            for i in range(frame_count):
                 frame_file = temp_frames_dir / f"frame_{i:04d}.png"
                 
-                # アニメーションの進行状態を設定（0.0 から 1.0）
-                progress = i / (settings.frame_count - 1) if settings.frame_count > 1 else 0
+                # アニメーションの進行状態を時間ベースで計算（0.0 から 1.0）
+                time_per_frame = settings.animation_duration / frame_count
+                current_time = i * time_per_frame
+                progress = current_time / settings.animation_duration if settings.animation_duration > 0 else 0
+                # 最後のフレームは確実に1.0にする
+                if i == frame_count - 1:
+                    progress = 1.0
                 
                 # JavaScriptでアニメーションの進行状態を設定
                 driver.execute_script(f"setAnimationProgress({progress});")
@@ -270,8 +275,8 @@ class ConversionModel:
                 driver.save_screenshot(str(frame_file))
                 frames.append(str(frame_file))
                 
-                progress_percent = int((i + 1) / settings.frame_count * 50)
-                self.notify_progress(progress_percent, f"フレーム {i+1}/{settings.frame_count} を生成中...")
+                progress_percent = int((i + 1) / frame_count * 50)
+                self.notify_progress(progress_percent, f"フレーム {i+1}/{frame_count} を生成中...")
 
             driver.quit()
 
@@ -280,6 +285,8 @@ class ConversionModel:
             
             # 各フレームを読み込んで処理
             images = []
+            duration_ms = settings.frame_duration_ms
+            
             for i, frame_file in enumerate(frames):
                 img = Image.open(frame_file)
                 # 白い余白を削除
@@ -307,17 +314,21 @@ class ConversionModel:
             
             # 実際のフレーム数を確認
             actual_frame_count = len(images)
-            print(f"デバッグ: 指定フレーム数={settings.frame_count}, 実際の画像数={actual_frame_count}")
+            print(f"デバッグ: 指定フレーム数={frame_count}, 実際の画像数={actual_frame_count}")
+            print(f"デバッグ: 設定fps={settings.fps}, フレーム間隔={duration_ms}ms")
+            print(f"デバッグ: アニメーション時間={settings.animation_duration}秒")
+            print(f"デバッグ: 1フレーム当たりの時間={settings.animation_duration/frame_count:.4f}秒")
+            print(f"デバッグ: 期待される総再生時間={frame_count * duration_ms / 1000:.4f}秒")
             
             # 各フレームの表示時間リストを作成（すべて同じ値）
-            durations = [settings.duration] * actual_frame_count
+            durations = [duration_ms] * actual_frame_count
             
             # GIFとして保存（最適化とdisposal設定を変更）
             images[0].save(
                 str(gif_path),
                 save_all=True,
                 append_images=images[1:],
-                duration=durations,  # 各フレームの表示時間を個別に指定
+                duration=durations,
                 loop=0,
                 optimize=False,  # 最適化を無効（フレーム数を保持）
                 disposal=2  # 各フレームを完全に置き換える
@@ -334,13 +345,10 @@ class ConversionModel:
                     except EOFError:
                         pass
                 print(f"デバッグ: 保存されたGIFのフレーム数={saved_frame_count}")
-                
-                if saved_frame_count < actual_frame_count:
-                    print(f"警告: フレーム数が減少しました（{actual_frame_count} → {saved_frame_count}）")
             except Exception as e:
                 print(f"GIFフレーム数確認エラー: {e}")
             
-            self.notify_progress(85, f"GIF保存完了 (フレーム数: {actual_frame_count})")
+            self.notify_progress(85, f"GIF保存完了 (フレーム数: {actual_frame_count}, fps: {settings.fps})")
 
             self.notify_progress(90, "一時ファイルを削除中...")
             
@@ -400,14 +408,17 @@ class ConversionView(tk.Tk, IConversionObserver):
     def __init__(self):
         super().__init__()
 
-        self.title("SVG to GIF Converter v9 - Final")
-        self.geometry("700x550")  # 高さを520から550に増やす
+        self.title("SVG to GIF Converter ver.0.1.0")
+        self.geometry("700x500")
         self.model = ConversionModel()
         self.controller = ConversionController(self.model, self)
         self.model.add_observer(self)
         
         # デフォルトのダウンロードフォルダを設定
         self.default_output_path = str(Path.home() / "Downloads")
+        
+        # アニメーション時間（検出された値）
+        self.animation_duration = 1.65  # デフォルト値
         
         self._create_widgets()
         self._setup_layout()
@@ -443,32 +454,23 @@ class ConversionView(tk.Tk, IConversionObserver):
         
         # パラメータ設定
         self.param_frame = ttk.LabelFrame(self, text="変換設定", padding=10)
-        self.frame_count = tk.IntVar(value=33)  # blocks-scale用のデフォルト
-        self.duration = tk.IntVar(value=50)
+        self.fps = tk.IntVar(value=20)  # デフォルト20fps
         
-        # フレーム数の行
-        ttk.Label(self.param_frame, text="フレーム数:").grid(row=0, column=0, sticky="w")
-        self.frame_scale = ttk.Scale(self.param_frame, from_=10, to=100, variable=self.frame_count, 
-                                    orient="horizontal", command=lambda x: self.frame_count.set(int(float(x))))
-        self.frame_scale.grid(row=0, column=1, sticky="ew", padx=(0, 10))
+        # fps設定の行
+        ttk.Label(self.param_frame, text="フレームレート(fps):").grid(row=0, column=0, sticky="w")
+        self.fps_scale = ttk.Scale(self.param_frame, from_=5, to=30, variable=self.fps, 
+                                  orient="horizontal", command=lambda x: self._on_fps_changed())
+        self.fps_scale.grid(row=0, column=1, sticky="ew", padx=(0, 10))
         
-        # フレーム数の数値入力フィールド
-        self.frame_entry = ttk.Entry(self.param_frame, textvariable=self.frame_count, width=8)
-        self.frame_entry.grid(row=0, column=2, padx=(0, 5))
-        self.frame_entry.bind('<Return>', lambda e: self.validate_frame_count())
-        self.frame_entry.bind('<FocusOut>', lambda e: self.validate_frame_count())
+        # fpsの数値入力フィールド
+        self.fps_entry = ttk.Entry(self.param_frame, textvariable=self.fps, width=8)
+        self.fps_entry.grid(row=0, column=2, padx=(0, 5))
+        self.fps_entry.bind('<Return>', lambda e: self._on_fps_changed())
+        self.fps_entry.bind('<FocusOut>', lambda e: self._on_fps_changed())
         
-        # フレーム間隔の行
-        ttk.Label(self.param_frame, text="フレーム間隔(ms):").grid(row=1, column=0, sticky="w")
-        self.duration_scale = ttk.Scale(self.param_frame, from_=30, to=200, variable=self.duration, 
-                                      orient="horizontal", command=lambda x: self.duration.set(int(float(x))))
-        self.duration_scale.grid(row=1, column=1, sticky="ew", padx=(0, 10))
-        
-        # フレーム間隔の数値入力フィールド
-        self.duration_entry = ttk.Entry(self.param_frame, textvariable=self.duration, width=8)
-        self.duration_entry.grid(row=1, column=2, padx=(0, 5))
-        self.duration_entry.bind('<Return>', lambda e: self.validate_duration())
-        self.duration_entry.bind('<FocusOut>', lambda e: self.validate_duration())
+        # 計算結果表示
+        self.calc_info = tk.StringVar(value="総再生時間: -- 秒  |  総フレーム数: --")
+        ttk.Label(self.param_frame, textvariable=self.calc_info, foreground="green").grid(row=1, column=0, columnspan=3, pady=(10, 0))
         
         # 自動設定ボタン
         ttk.Button(self.param_frame, text="最適値を自動設定", command=self._auto_configure).grid(row=2, column=1, pady=10)
@@ -491,28 +493,28 @@ class ConversionView(tk.Tk, IConversionObserver):
         
         # グリッドの列幅を調整
         self.param_frame.columnconfigure(1, weight=1)
-        
-    def validate_frame_count(self):
-        """フレーム数の入力値を検証"""
-        try:
-            value = int(self.frame_count.get())  # 整数に変換
-            if value < 10:
-                self.frame_count.set(10)
-            elif value > 100:
-                self.frame_count.set(100)
-        except:
-            self.frame_count.set(33)
     
-    def validate_duration(self):
-        """フレーム間隔の入力値を検証"""
+    def _on_fps_changed(self):
+        """fps変更時に計算結果を更新"""
         try:
-            value = int(self.duration.get())  # 整数に変換
-            if value < 30:
-                self.duration.set(30)
-            elif value > 200:
-                self.duration.set(200)
+            fps = int(self.fps.get())
+            if fps < 5:
+                fps = 5
+                self.fps.set(fps)
+            elif fps > 30:
+                fps = 30
+                self.fps.set(fps)
+            
+            # 総フレーム数を計算
+            total_frames = max(10, int(self.animation_duration * fps))
+            actual_duration = total_frames / fps
+            
+            # 表示を更新
+            self.calc_info.set(f"総再生時間: {actual_duration:.2f}秒  |  総フレーム数: {total_frames}")
+            
         except:
-            self.duration.set(50)
+            self.fps.set(20)
+            self._on_fps_changed()
     
     def _browse_svg(self):
         filename = filedialog.askopenfilename(
@@ -538,7 +540,6 @@ class ConversionView(tk.Tk, IConversionObserver):
         if svg_path and os.path.exists(svg_path):
             # ファイル名からGIFファイル名を生成
             svg_filename = Path(svg_path).stem
-            # .gifが既に付いていない場合のみ追加
             gif_name = f"{svg_filename}.gif" if not svg_filename.endswith('.gif') else svg_filename
             self.gif_path.set(gif_name)
             
@@ -550,14 +551,19 @@ class ConversionView(tk.Tk, IConversionObserver):
         if not self.svg_path.get() or not os.path.exists(self.svg_path.get()):
             return
         
-        frame_count, duration, animation_duration = self.controller.analyze_svg(self.svg_path.get())
+        animation_duration, fps = self.controller.analyze_svg(self.svg_path.get())
         
-        self.frame_count.set(int(frame_count))  # 整数に変換
-        self.duration.set(int(duration))  # 整数に変換
+        # 検出された値を保存
+        self.animation_duration = animation_duration
+        self.fps.set(int(fps))
         
+        # 表示を更新
         info_text = f"検出されたアニメーション時間: {animation_duration:.2f}秒\n"
-        info_text += f"推奨設定: {frame_count}フレーム, {duration}ms間隔"
+        info_text += f"推奨設定: {fps}fps"
         self.animation_info.set(info_text)
+        
+        # 計算結果を更新
+        self._on_fps_changed()
             
     def _start_conversion(self):
         if not self.svg_path.get() or not os.path.exists(self.svg_path.get()):
@@ -580,9 +586,9 @@ class ConversionView(tk.Tk, IConversionObserver):
         settings = ConversionSettings(
             svg_file=self.svg_path.get(),
             output_dir=output_dir,
-            gif_output=self.gif_path.get(),  # そのまま渡す（.gif拡張子を含む）
-            frame_count=int(self.frame_count.get()),  # 整数に変換
-            duration=int(self.duration.get())  # 整数に変換
+            gif_output=self.gif_path.get(),
+            fps=int(self.fps.get()),
+            animation_duration=self.animation_duration
         )
         
         self.controller.start_conversion(settings)
