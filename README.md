@@ -1,292 +1,233 @@
 # SVG to GIF Converter
 
-SVGアニメーションをGIFアニメーションに変換するPythonツールです。特に、複数の要素が時間差で動く「順番アニメーション」を再現できます。
+SVGアニメーションをGIFアニメーションに変換するPythonツールです。CSS animationやSMILアニメーションを含むSVGアニメーションを、GIFアニメーションに変換できます。
 
-## 主な特徴
+## バージョン 1.1.2
 
-- **順番アニメーション対応**: CSS `animation-delay` を解析し、要素が順番に動くアニメーションを再現
-- **fps制御**: フレームレートのみで滑らかさを制御、フレーム数は自動計算
-- **自動設定**: SVGファイルを解析して最適なfpsを自動提案
+### 主な特徴
+
+- **アニメーション自動検出**: SVGファイルからアニメーション時間を自動検出
+- **個別要素のタイミング制御**: `animation-delay`を持つ各要素を独立して制御
+- **柔軟な再生時間設定**: 総再生時間を自由に調整（自然なループ）
+- **フェード効果**: フェードイン/アウト、開始前/終了後の空白時間
+- **デバッグモード**: アニメーション解析の詳細情報出力
 - **高品質出力**: 2倍解像度でキャプチャしてクリアなGIFを生成
-- **直感的UI**: 整数fps制御と自動計算による使いやすいインターフェース
-- **安定動作**: Windows/macOS対応、エラーハンドリング強化
 
 ## 動作環境
 
 - **Python**: 3.7以上
 - **OS**: Windows 10/11, macOS 10.14+, Linux (Ubuntu 18.04+)
-- **ブラウザ**: Google Chrome または Chromium
+- **ブラウザ**: Google Chrome（自動インストール）
 
-## インストール手順
+## インストール
 
-### ステップ1: リポジトリの取得
+### 1. 必要なライブラリのインストール
+
 ```bash
-git clone https://github.com/sarap422/svg2gif-converter.git
+# Windowsの場合（python -m pipを使用）
+python -m pip install pillow selenium webdriver-manager
+
+# macOS/Linuxの場合
+pip install pillow selenium webdriver-manager
+```
+
+### 2. スクリプトのダウンロード
+
+```bash
+# GitHubからダウンロード
+git clone https://github.com/yourusername/svg2gif-converter.git
 cd svg2gif-converter
-```
-
-### ステップ2: 仮想環境の作成（推奨）
-```bash
-# 仮想環境を作成
-python -m venv venv
-
-# 仮想環境をアクティベート
-# Windows:
-venv\Scripts\activate
-# macOS/Linux:
-source venv/bin/activate
-```
-
-### ステップ3: 依存関係のインストール
-
-**重要**: Windowsで `pip` エラーが発生する場合は `python -m pip` を使用してください。
-
-```bash
-# 通常のインストール（推奨）
-python -m pip install pillow selenium webdriver-manager
-
-# requirements.txtを使用する場合
-python -m pip install -r requirements.txt
-```
-
-#### Windowsで `pip` エラーが発生する場合
-
-以下のようなエラーが出る場合：
-```
-Fatal error in launcher: Unable to create process using '"C:\Python\Python312\python.exe" "C:\Python\Python312\Scripts\pip.exe" install': ????
-```
-
-**解決方法**:
-1. `python -m pip` を使用（最も確実）
-2. 仮想環境を新しく作り直す
-3. pipを最新版に更新
-
-```bash
-# 解決策1: python -m pip を使用
-python -m pip install pillow selenium webdriver-manager
-
-# 解決策2: 仮想環境を作り直し
-deactivate
-rmdir /s venv
-python -m venv venv
-venv\Scripts\activate
-python -m pip install pillow selenium webdriver-manager
-
-# 解決策3: pipの修復
-python -m pip install --upgrade pip
-```
-
-### ステップ4: 動作確認
-```bash
-# ライブラリが正常にインストールされているか確認
-python -c "import PIL, selenium, webdriver_manager; print('インストール成功！')"
 ```
 
 ## 使い方
 
-### 基本操作
-1. **ツール起動**
+### 基本的な使用方法
+
+1. **起動**
    ```bash
    python svg2gif-converter.py
    ```
 
-2. **SVGファイル選択**
-   - 「参照」ボタンでSVGファイルを選択
-   - アニメーション情報が自動検出されます
+2. **SVGファイルを選択**
+   - 「参照」ボタンをクリックしてSVGファイルを選択
+   - アニメーション時間が自動的に検出されます
 
-3. **設定確認**
-   - 「最適値を自動設定」で推奨設定を適用
-   - フレームレート(fps)スライダーで滑らかさを調整（5-30fps、整数のみ）
+3. **設定を調整（必要に応じて）**
+   - **フレームレート**: 滑らかさの調整（5-30fps）
+   - **総再生時間**: アニメーションのループ回数を制御
+   - **オプション**: フェード効果や空白時間の追加
 
-4. **変換実行**
+4. **変換**
    - 「変換開始」ボタンをクリック
-   - 完成したGIFがダウンロードフォルダに保存されます
+   - GIFファイルが指定フォルダに保存されます
 
-![Main Window](docs/images/main-window.png)
+### 設定項目の詳細
 
-### サンプルファイルで試す
+#### 変換設定
+- **検出されたアニメーション時間**: SVGから自動検出された1ループの時間
+- **フレームレート(fps)**: 5-30の範囲で調整可能
+- **総再生時間(秒)**: 実際のGIFの長さ（手動調整可能）
+- **総フレーム数**: 自動計算される
 
-`examples/` フォルダに動作確認用のSVGファイルが含まれています：
+#### オプション設定
+- **開始前の空白(秒)**: アニメーション開始前の静止時間
+- **終了後の空白(秒)**: アニメーション終了後の静止時間
+- **フェードイン(秒)**: 徐々に表示される効果
+- **フェードアウト(秒)**: 徐々に消える効果
+- **デバッグモード**: 詳細な変換情報を出力
+
+### 総再生時間とループの仕組み
+
+総再生時間を調整することで、アニメーションのループ回数を制御できます：
 
 ```
-examples/
-├── 6-dots-rotate-black-36.svg     # 回転アニメーション (0.75秒)
-├── blocks-scale-black-36.svg      # 順番アニメーション (1.65秒)  
-├── blocks-scale-green-36.svg      # 色違いバリエーション (1.65秒)
-└── expected-outputs/              # 期待される出力結果
-    ├── 6-dots-rotate-black-36.gif
-    ├── blocks-scale-black.gif
-    └── blocks-scale-green-36.gif
+例：1.65秒のアニメーションの場合
+- 総再生時間 1.65秒 → 1回再生
+- 総再生時間 3.3秒 → 2回ループ
+- 総再生時間 5.0秒 → 約3回ループ
 ```
 
-**推奨テスト手順:**
-1. `examples/6-dots-rotate-black-36.svg` から開始（シンプルな回転）
-2. `examples/blocks-scale-black-36.svg` で順番アニメーションを確認
-3. 生成されたGIFを `expected-outputs/` と比較
+## 対応しているアニメーション
 
-**各サンプルの特徴:**
-- **6-dots-rotate**: シンプルな回転アニメーション、0.75秒ループ
-- **blocks-scale**: 4つの要素が順番に拡縮する複雑なアニメーション、1.65秒ループ
+### ✅ 完全対応
+- **CSS Animation**: `@keyframes` と `animation` プロパティ
+- **Animation-delay**: 要素ごとの遅延開始
+- **SMILアニメーション**: `<animate>`, `<animateTransform>`
+- **単純な構造のアニメーション**: 直接的な要素アニメーション
 
-これらのファイルは [react-svg-spinners](https://github.com/ephraimduncan/react-svg-spinners) プロジェクトから提供されています（MIT License）。
-
-### 設定パラメーター
-
-#### フレームレート(fps): 5-30fps（整数のみ）
-- **5-10fps**: カクカクした動き（軽量、小ファイル）
-- **15-20fps**: 標準的な滑らかさ（推奨）
-- **25-30fps**: 非常に滑らか（高品質、大ファイル）
-
-**注意**: 30fps近い高フレームレートでもブラウザによってはGIFの制限で実際の再生速度は約20-25fps程度になる場合があります。
-
-#### 自動計算される値
-- **総フレーム数**: アニメーション時間 × fps
-- **総再生時間**: フレーム数 ÷ fps
-
-#### 計算例
-
-**blocks-scale-black-36.svg:**
-```
-検出時間: 1.65秒
-20fps設定 → 33フレーム、1.65秒再生
-30fps設定 → 49フレーム、1.63秒再生（より滑らか）
-```
-
-**6-dots-rotate-black-36.svg:**
-```
-検出時間: 0.75秒
-20fps設定 → 15フレーム、0.75秒再生
-30fps設定 → 22フレーム、0.73秒再生（より滑らか）
-```
-
-## 対応するアニメーション形式
-
-### ✅ 対応済み
-- **CSSアニメーション**: `@keyframes` + `animation`
-- **順番アニメーション**: `animation-delay` による時間差
-- **SMIL**: `<animate>`, `<animateTransform>`
-- **blocks-scale系**: loaders.css のspinnerアニメーション
+### ⚠️ 部分対応（制限あり）
+- **複雑な入れ子構造**: アニメーション要素を含むwrapperがさらにアニメーションする場合
+  - 例：回転するグループ内で個別に動く要素
+  - 現象：タイミングがずれたり、一部のアニメーションが再現されない場合がある
+- **Animation-delayの複雑な組み合わせ**: 
+  - 非常に短い間隔（0.1秒未満）の連続的なdelay
+  - 現象：微妙なタイミングのずれが発生する場合がある
 
 ### ❌ 非対応
-- **JavaScript**: 動的制御アニメーション
-- **インタラクティブ**: ホバーやクリックイベント
-- **外部依存**: 外部ファイルへの参照
+- **JavaScriptアニメーション**: 動的に制御されるアニメーション
+- **インタラクティブ要素**: hover、click等のイベント駆動
+- **外部リソース**: 外部CSSファイルやJavaScriptライブラリ
+
+## 既知の問題と制限事項
+
+### 1. 複雑な入れ子アニメーション
+アニメーション要素を含むグループ（`<g>`タグなど）がさらにアニメーションする場合、正確に再現できない場合があります。
+
+**例：**
+```svg
+<g class="rotating-group">  <!-- このグループが回転 -->
+  <circle class="pulsing">  <!-- この要素が拡縮 -->
+</g>
+```
+
+**回避策：**
+- 可能な限りフラットな構造でアニメーションを定義
+- グループアニメーションと要素アニメーションを分離
+
+### 2. Animation-delayの精度
+0.15秒などの細かい`animation-delay`を持つ要素が多数ある場合、微妙なタイミングのずれが発生することがあります。
+
+**影響を受けやすいケース：**
+- 10個以上の要素が順番にアニメーションする
+- delay間隔が0.1秒未満
+- 総アニメーション時間が5秒を超える
+
+**対処法：**
+- デバッグモードで実際のタイミングを確認
+- 必要に応じて手動で総再生時間を微調整
+
+### 3. ブラウザ依存の描画
+SVGの一部の高度な機能（フィルター、マスク、クリッピング）は、ブラウザによって描画結果が異なる場合があります。
 
 ## トラブルシューティング
 
-### よくある問題
+### よくある質問
 
-#### 1. Windowsでのpipエラー
-```bash
-# エラー: Fatal error in launcher または文字化け
-# 解決: python -m pip を使用
-python -m pip install pillow selenium webdriver-manager
+**Q: アニメーションの一部が再現されない**
+A: デバッグモードを有効にして、検出されたアニメーション要素を確認してください。複雑な入れ子構造の場合は、SVGの構造を簡略化することを検討してください。
+
+**Q: タイミングがずれる**
+A: 総再生時間を手動で調整するか、フレームレートを変更してみてください。20fpsが最もバランスが良い設定です。
+
+**Q: ファイルサイズが大きい**
+A: フレームレートを下げる（15fps程度）か、総再生時間を短くすることでファイルサイズを削減できます。
+
+**Q: Chromeドライバーのエラー**
+A: `webdriver-manager`が自動的に適切なバージョンをダウンロードしますが、エラーが続く場合はChromeブラウザを最新版に更新してください。
+
+### エラーメッセージと対処法
+
+```
+エラー: SVGファイルが見つかりません
+→ ファイルパスに日本語が含まれていないか確認
+
+エラー: 変換処理が既に実行中です
+→ 前の変換が完了するまで待つか、アプリを再起動
+
+エラー: 出力フォルダを作成できません
+→ 書き込み権限があるフォルダを選択
 ```
 
-#### 2. macOSでのファイル選択エラー
-```bash
-# エラー: NSInvalidArgumentException
-# 原因: macOSのファイルダイアログの制限
-# 解決済み: ver.1.0.0で修正完了
-```
+## 技術詳細
 
-#### 3. Chrome/ChromeDriverの問題
-```bash
-# ChromeDriverは自動ダウンロードされますが、エラーの場合：
-# Chromeブラウザがインストールされているか確認
-# 最新版に更新してください
-```
+### アニメーション検出アルゴリズム
 
-#### 4. 変換が途中で停止
-```bash
-# ブラウザプロセスが残っている場合
-# Windows:
-taskkill /f /im chrome.exe /im chromedriver.exe
+1. **CSS Animation検出**
+   - `animation:` ショートハンドプロパティ
+   - `animation-duration` の個別指定
+   - `animation-delay` の最大値を考慮
 
-# macOS/Linux:
-pkill -f chrome
-pkill -f chromedriver
-```
+2. **SMIL Animation検出**
+   - `dur` 属性の解析
+   - `begin` 属性による遅延
 
-#### 5. メモリ不足エラー
-- フレームレートを下げる（30fps → 20fps）
-- 大きなSVGファイルの場合は分割処理を検討
+3. **総時間の計算**
+   ```
+   総アニメーション時間 = base_duration + max_delay
+   ```
 
-#### 6. アニメーションが正しく変換されない
-- SVGファイルをブラウザで開いて動作確認
-- CSS `animation-duration` と `animation-delay` が正しく設定されているか確認
+### フレーム生成プロセス
 
-### パフォーマンス最適化
+1. 各フレームで JavaScript を使用して時間を制御
+2. `animation-delay` を負の値に設定してアニメーションを特定の位置に
+3. `animation-play-state: paused` で一時停止
+4. スクリーンショットをキャプチャ
 
-#### 推奨設定
-```
-一般的なアニメーション: 20fps
-高品質が必要な場合: 25-30fps
-ファイルサイズ重視: 15fps
-軽量化重視: 10fps
-```
+### 最適化設定
 
-#### システム要件
-```
-RAM: 4GB以上推奨（高fpsの場合は8GB以上）
-ストレージ: 一時ファイル用に1GB以上の空き容量
-CPU: 変換時間に影響（高性能ほど高速）
-```
-
-## 技術仕様
-
-### アーキテクチャ
-- **MVCパターン**: Model-View-Controller設計
-- **非同期処理**: UIをブロックしない変換処理
-- **自動リソース管理**: 一時ファイルの自動削除
-
-### フレームレート制限の技術的背景
-GIFフォーマットの仕様により：
-- フレーム間隔は1/100秒単位（10ms単位）でのみ設定可能
-- 60fps（16.67ms）→ 20msに丸められ、実質50fps
-- 30fps（33.33ms）→ 30msに丸められ、実質33fps
-- ブラウザによっては最小フレーム間隔の制限あり
-
-このため、30fps制限は技術的に適切な設計です。
-
-### 主要技術
-1. **Selenium WebDriver**: SVGアニメーションキャプチャ
-2. **Pillow (PIL)**: 画像処理とGIF生成
-3. **正規表現**: SVGアニメーション情報解析
-4. **JavaScript注入**: ブラウザでのアニメーション制御
-
-### 出力設定
 ```python
-# GIF最適化設定
-optimize=False      # フレーム数保持のため無効
-disposal=2          # 完全なフレーム置き換え
-loop=0              # 無限ループ
+# 推奨設定値
+一般的な用途: 20fps, 品質優先
+Web用途: 15fps, ファイルサイズ優先  
+プレゼンテーション: 25fps, 高品質
 ```
 
 ## 更新履歴
 
-### ver.1.0.0
-- `.75s`などの小数点アニメーション時間検出バグを修正
-- exampleファイルの追加（react-svg-spinners由来）
-- リリース版として安定化
+### v1.1.2
+- デバッグモードのUI改善
+- コードのクリーンアップ
 
-### ver.0.1.0
-- 整数fps制御に統一（5-30fps、小数点なし）
-- macOSでのファイルダイアログクラッシュを修正
-- UI高さ調整で文字の見切れを解消
-- 時間ベースの進行計算で再生速度を正確化
-- Windowsでのpip問題に対応したドキュメント
+### v1.1.1
+- 各要素の元のanimation-delayを保持する制御を実装
+- 個別要素のタイミングを独立して管理
+- デバッグモードの改善
 
-### ver.0.0.9
-- 順番アニメーション制御の完全実装
-- フレーム数保持の確実な動作
+### v1.1.0
+- アニメーション検出の精度向上
+- フェード効果の追加
+- UIの大幅改善
 
-### ver.0.0.1-0.0.8
-- 基本機能の実装と改良
-- UI改善とエラーハンドリング強化
+### v1.0.0
+- 初回安定版リリース
 
 ## ライセンス
 
-MIT License - 詳細は [LICENSE](LICENSE) を参照
+MIT License
 
----
+## クレジット
+
+このツールは以下のライブラリを使用しています：
+- [Pillow](https://python-pillow.org/) - 画像処理
+- [Selenium](https://www.selenium.dev/) - ブラウザ自動化
+- [webdriver-manager](https://github.com/SergeyPirogov/webdriver_manager) - ChromeDriver管理
